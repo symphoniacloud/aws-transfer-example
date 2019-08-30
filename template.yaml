@@ -1,0 +1,138 @@
+AWSTemplateFormatVersion: 2010-09-09
+Transform: AWS::Serverless-2016-10-31
+
+Globals:
+  Function:
+    Runtime: java8
+    MemorySize: 512
+    Timeout: 10
+    Tracing: PassThrough
+    Environment:
+      Variables:
+        BUCKET: !Ref Bucket
+        ROLE_ARN: !GetAtt UserRole.Arn
+  Api:
+    TracingEnabled: true
+
+Resources:
+
+  SFTPServer:
+    Type: AWS::Transfer::Server
+    Properties:
+      IdentityProviderType: API_GATEWAY
+      IdentityProviderDetails:
+        InvocationRole: !GetAtt IdentityProviderInvocationRole.Arn
+        Url: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"
+      LoggingRole: !GetAtt LoggingRole.Arn
+
+  Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  LoggingRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: transfer.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: AllowLogging
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:DescribeLogStreams
+                  - logs:CreateLogGroup
+                  - logs:PutLogEvents
+                Resource: "*"
+
+  IdentityProviderInvocationRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: transfer.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: InvokeApiGateway
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - execute-api:Invoke
+                Resource: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ServerlessRestApi}/Prod/GET/*"
+        - PolicyName: GetApiGateway
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - apigateway:GET
+                Resource: "*"
+
+  IdentityProviderLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: io.symphonia.lambda.IdentityProvider::handler
+      CodeUri: target/lambda.zip
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /servers/{serverId}/users/{userId}/config
+            Method: GET
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref Bucket
+
+  UserRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: transfer.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: ListUserFolder
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                  - s3:GetBucketLocation
+                Resource: !Sub "arn:aws:s3:::${Bucket}"
+        - PolicyName: HomeDirObjectAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:GetObjectACL
+                  - s3:GetObjectVersion
+                  - s3:DeleteObject
+                  - s3:DeleteObjectACL
+                  - s3:DeleteObjectVersion
+                Resource: !Sub "arn:aws:s3:::${Bucket}/*"
