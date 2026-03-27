@@ -1,5 +1,7 @@
 # aws-transfer-poc
 
+**THIS REPOSITORY IS ARCHIVED AND UNMAINTANED. IT MAY NO LONGER WORK WITH RELEVANT DEPENDENCIES AND SERVICES. IT MAY SPECIFY INSECURE LIBRARY DEPENDENCIES.**
+
 This project is an example of an AWS Transfer for SFTP endpoint using a custom identity provider.
 The custom identity provider is API Gateway backed by a Java-based AWS Lambda function.
 
